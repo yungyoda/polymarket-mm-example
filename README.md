@@ -1,85 +1,220 @@
-# Making Markets on Polymarket's Central Limit Order Book
+# Polymarket Market Making Bot
 
-Market making is a market-neutral trading strategy which attempts to profit by providing liquidity (placing orders above and below the market price) to a central limit orderbook marketplace.  
+A Python-based market-making bot for [Polymarket](https://polymarket.com/) using the CLOB (Centralized Limit Order Book) API with real-time WebSocket price updates.
 
-Here is the code for a completely automated market-making bot, which can be used to trade on Polymarket.
+## Core Features
 
-## Instructions
+### PolymarketInterface (`polymarketInterface.py`)
 
-To start, edit the bands.json configuration file to suit your needs.  This is what a sample bands.json file looks like:
+Provides a complete interface to Polymarket's CLOB orderbook using the `py-clob-client` library:
 
-```json
-{
-    "buyBands": [
-        {
-            "minMargin": 0.005,
-            "avgMargin": 0.01,
-            "maxMargin": 0.02,
-            "minAmount": 20.0,
-            "avgAmount": 30.0,
-            "maxAmount": 40.0
-        },
-        {
-            "minMargin": 0.02,
-            "avgMargin": 0.025,
-            "maxMargin": 0.05,
-            "minAmount": 40.0,
-            "avgAmount": 60.0,
-            "maxAmount": 80.0
-        }
-    ],
-    "buyLimits": [],
-    "sellBands": [
-        {
-            "minMargin": 0.005,
-            "avgMargin": 0.01,
-            "maxMargin": 0.02,
-            "minAmount": 20.0,
-            "avgAmount": 30.0,
-            "maxAmount": 40.0
-        },
-        {
-            "minMargin": 0.02,
-            "avgMargin": 0.025,
-            "maxMargin": 0.05,
-            "minAmount": 40.0,
-            "avgAmount": 60.0,
-            "maxAmount": 80.0
-        }
-    ],
-    "sellLimits": []
-}
+- **Order Management**
+  - Place orders asynchronously with automatic signing and submission to CLOB
+  - Cancel orders with order ID tracking
+  - Track open orders with state management
+  - Get current open orders from the API
+
+- **Market Data**
+  - Real-time bid/ask prices via WebSocket
+  - Current mid-price calculation
+  - Spread monitoring
+  - Market existence validation
+
+- **Real-Time Updates**
+  - Integrated WebSocket client (`wss.py`) for live price feeds
+  - Automatic price update callbacks
+  - Low-latency market monitoring
+
+- **Authentication**
+  - Automatic API credential derivation from private key
+  - Support for environment variables (PRIV_KEY, FUNDER_ADDRESS)
+  - Secure order signing using Polygon private key
+
+### Market Maker (`MM.py`)
+
+High-level market-making strategy logic:
+- Monitors a single market in real-time
+- Executes market-making algorithm
+- Manages bid/ask spread positioning
+- Handles order placement and cancellation logic
+
+### Band Configuration (`Bands.py`)
+
+Strategy parameters and constraints:
+- Reads configuration from `bands.json`
+- Determines order quantities and spread requirements
+- Enforces balance and risk limits
+- Manages time-based constraints
+
+### WebSocket Client (`wss.py`)
+
+Real-time Polymarket market data streaming:
+- Connects to `wss://ws-subscriptions-clob.polymarket.com`
+- Subscribes to orderbook updates for specific assets
+- Supports price alerts and callbacks
+- Automatic reconnection handling
+- Trade execution monitoring
+
+## Getting Started
+
+### Prerequisites
+
+- Python 3.11+
+- Private key and funder address for Polymarket account
+- Polygon (MATIC) for gas fees
+
+### Installation
+
+```bash
+pip install -r pyproject.toml
 ```
 
-"buyBands" and "sellBands" represent areas in the order book surrounding the current market price where you want to place your resting buy and sell orders respectively.  The bot attempts to maintain at least minAmount (collective size of orders) and at most maxAmount within the specified margins, where margins represent a percent offset from the market price.  For example, if an outcome is trading at 0.50 USDC, for the given configuration file above four bands are created:
+Or manually:
 
-1. Average bid size of 30 tokens between prices (0.5 * (1 - 0.005)) = 0.4975 USDC and (0.5 * (1 - 0.02)) = 0.49 USDC
-2. Average bid size of 60 tokens between prices (0.5 * (1 - 0.02)) = 0.49 USDC and (0.5 * (1 - .05)) = 0.475 USDC
-3. Average offer size of 30 tokens between prices (0.5 * (1 + 0.005)) = 0.5025 USDC and (0.5 * (1 + 0.02)) = 0.51 USDC
-4. Average offer size of 60 tokens between prices 0.51 USDC and 0.525 USDC.
+```bash
+pip install py-clob-client>=0.28.0 websocket-client web3 python-dotenv requests
+```
 
-Every second the bot reads the market price of the token being traded and decides whether to cancel or place new orders.  For example if the market price moves from 0.5 USDC per token to 0.49 USDC per token, new bands are created with the specified margins about the new 0.49 USDC mid price.  
+### Environment Setup
 
-The process for cancelling orders goes like this:
+Create a `.env` file with your credentials:
 
-1. If an order is outside of any bands (either between your inner two bands or outside your two outer bands), cancel it.
-2. If there are enough orders within a band such that that band's maxAmount is breached:
-    - If the band is an inner band (smallest margins) it will cancel orders closest to the market price until maxAmount is reached
-    - If the band is an outer band (largest margins) it will cancel orders furthest from the market price
-    - If the band is neither (the second of three bands, for example) it will cancel orders in order of size, smallest to largest
+```env
+PRIV_KEY=your_private_key_here
+FUNDER_ADDRESS=your_funder_address_here
+```
 
-The process for adding new orders goes like this:
+Or set environment variables:
 
-For each band,
-1. If the sum of order sizes within the band are less than avgAmount, place a new order at avgMargin to either make up the differnece and achieve avgAmount, use your remaining collateral to place the order, or if order limits were specified, use the remaining limit for the specified time frame. 
+```bash
+export PRIV_KEY="your_private_key"
+export FUNDER_ADDRESS="your_funder_address"
+```
 
-TODO: explain limits
+### Configuration
 
-## Work left to do:
-1. Have the user provide his wallet's private key via a command line argument in MM.py
-2. Somehow use the user's wallet to sign limit orders to the Polymarket relayer contract
-3. Implement a way to get the user's ERC1155 and USDC balance; maintain this as a property of the MM class and pass it to bands.get_new_orders() in synchronize_orders()
-4. Figure out how to cancel on-chain orders, implement this in polymarketInterface.cancel_orders()
-5. Get the user's currently open orders.  Orders that were posted earlier that have since been filled should not be included, or reflect their new size
-5. Testing
-6. All the TODO's; these are mostlly for better performance
+Edit `bands.json` to set:
+- Target market (FPMM address)
+- Asset ID (token outcome)
+- Spread requirements
+- Order sizes
+- Balance limits
+
+### Running the Bot
+
+```bash
+python MM.py
+```
+
+## Architecture
+
+### Order Flow
+
+1. **Connect** - Initialize CLOB client and WebSocket connection
+2. **Monitor** - Receive real-time price updates via WebSocket
+3. **Calculate** - Determine optimal bid/ask quotes based on strategy
+4. **Execute** - Place orders asynchronously with thread pool
+5. **Manage** - Track, update, and cancel orders as needed
+6. **Cleanup** - Graceful disconnection and shutdown
+
+### Async Pattern
+
+- ThreadPoolExecutor for concurrent order operations
+- Thread-safe state management with locks
+- Non-blocking price updates via WebSocket callbacks
+- Timeout protection on all async operations
+
+### Real-Time Data Flow
+
+```
+Polymarket WebSocket
+      ↓
+  PolymarketWebSocketClient (wss.py)
+      ↓
+  Price Update Callback
+      ↓
+  PolymarketInterface (state update)
+      ↓
+  Market Maker Strategy
+      ↓
+  Order Placement via CLOB API
+```
+
+## Key Methods
+
+### PolymarketInterface
+
+- `connect_ws()` - Connect to real-time price feed
+- `place_orders(orders)` - Place multiple orders asynchronously
+- `cancel_orders(order_ids)` - Cancel orders by ID
+- `get_orders()` - Fetch current open orders
+- `get_price()` - Get current bid/ask/mid prices
+- `get_market()` - Validate market exists
+- `disconnect()` - Clean shutdown
+
+### Usage Example
+
+```python
+# Initialize
+interface = PolymarketInterface(
+    fpmm_address="0x...",
+    asset_id="123456789",
+    private_key="0x...",
+    funder_address="0x..."
+)
+
+# Connect to real-time prices
+interface.connect_ws()
+
+# Place orders
+orders = [
+    Order(size=100, price=0.45, is_buy=True),
+    Order(size=100, price=0.55, is_buy=False)
+]
+interface.place_orders(orders)
+
+# Monitor prices
+prices = interface.get_price()
+print(f"Bid: ${prices['bid']}, Ask: ${prices['ask']}, Spread: ${prices['spread']}")
+
+# Clean up
+interface.disconnect()
+```
+
+## Configuration Files
+
+### bands.json
+
+Market-making parameters per market:
+- FPMM address
+- Asset ID
+- Bid/ask spread
+- Order sizes
+- Balance requirements
+
+### pyproject.toml
+
+Python dependencies and project metadata.
+
+## Error Handling
+
+- Automatic retry logic for API failures
+- WebSocket reconnection on disconnect
+- Thread-safe error logging
+- Graceful degradation with warnings
+- Exception tracking and reporting
+
+## Threading Model
+
+- Main thread: Strategy execution and monitoring
+- WebSocket thread: Real-time price updates (daemon)
+- Executor threads: Async order operations (pool of 5 by default)
+- Ping thread: Keep-alive mechanism for WebSocket
+
+## Deployment
+
+The bot is designed for:
+- Production market-making on Polymarket
+- Single market operation (extensible to multi-market)
+- Continuous 24/7 operation
+- Minimal external dependencies

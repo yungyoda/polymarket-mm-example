@@ -1,0 +1,23 @@
+# Polymarket Market Making Bot - Core Dependencies
+# Install with: pip install -r requirements.txt
+
+# Polymarket CLOB interface
+py-clob-client>=0.28.0
+
+# WebSocket client for real-time data streaming
+websocket-client>=1.7.0
+
+# Ethereum/Polygon utilities for transaction signing
+web3>=7.14.0
+
+# Environment variable management
+python-dotenv>=1.2.1
+
+# HTTP requests for REST API calls
+requests>=2.31.0
+
+# Optional development dependencies (install with: pip install -r requirements.txt -e ".[dev]")
+# pytest>=7.0
+# black>=23.0
+# ruff>=0.1.0
+
